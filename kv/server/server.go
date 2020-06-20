@@ -35,25 +35,80 @@ func NewServer(storage storage.Storage) *Server {
 
 // The below functions are Server's gRPC API (implements TinyKvServer).
 
-// Raw API.
-func (server *Server) RawGet(_ context.Context, req *kvrpcpb.RawGetRequest) (*kvrpcpb.RawGetResponse, error) {
-	// Your Code Here (1).
-	return nil, nil
+// RawGet return the value of a key.
+func (server *Server) RawGet(ctx context.Context, req *kvrpcpb.RawGetRequest) (*kvrpcpb.RawGetResponse, error) {
+	res := new(kvrpcpb.RawGetResponse)
+	reader, err := server.storage.Reader(req.Context)
+	if err != nil {
+		res.Error = err.Error()
+		return res, err
+	}
+	value, err := reader.GetCF(req.Cf, req.Key)
+	if err != nil {
+		res.Error = err.Error()
+		return res, err
+	}
+	if value == nil {
+		res.NotFound = true
+	}
+	res.Value = value
+	return res, nil
 }
 
+// RawPut put new value for the key
 func (server *Server) RawPut(_ context.Context, req *kvrpcpb.RawPutRequest) (*kvrpcpb.RawPutResponse, error) {
-	// Your Code Here (1).
-	return nil, nil
+	res := new(kvrpcpb.RawPutResponse)
+	modifies := append([]storage.Modify{}, storage.Modify{Data: storage.Put{Cf: req.GetCf(), Key: req.Key, Value: req.Value}})
+	err := server.storage.Write(req.Context, modifies)
+	if err != nil {
+		res.Error = err.Error()
+	}
+	return res, err
 }
 
+// RawDelete delete a key
 func (server *Server) RawDelete(_ context.Context, req *kvrpcpb.RawDeleteRequest) (*kvrpcpb.RawDeleteResponse, error) {
-	// Your Code Here (1).
-	return nil, nil
+	res := new(kvrpcpb.RawDeleteResponse)
+	modifies := append([]storage.Modify{}, storage.Modify{Data: storage.Delete{Cf: req.GetCf(), Key: req.Key}})
+	err := server.storage.Write(req.Context, modifies)
+	if err != nil {
+		res.Error = err.Error()
+	}
+	return res, err
 }
 
+// RawScan return list of key value pairs
 func (server *Server) RawScan(_ context.Context, req *kvrpcpb.RawScanRequest) (*kvrpcpb.RawScanResponse, error) {
-	// Your Code Here (1).
-	return nil, nil
+	res := new(kvrpcpb.RawScanResponse)
+	reader, err := server.storage.Reader(req.Context)
+	if err != nil {
+		res.Error = err.Error()
+		return res, err
+	}
+	iter := reader.IterCF(req.Cf)
+	defer iter.Close()
+	iter.Seek(req.StartKey)
+	res.Kvs = []*kvrpcpb.KvPair{}
+
+	var i uint32
+	for i = 0; i < req.Limit; i++ {
+		if iter.Valid() {
+			kvpair := new(kvrpcpb.KvPair)
+			item := iter.Item()
+			key := item.KeyCopy(nil)
+			value, err := item.ValueCopy(nil)
+			if err != nil {
+			} else {
+				kvpair.Key = key
+				kvpair.Value = value
+			}
+			res.Kvs = append(res.Kvs, kvpair)
+			iter.Next()
+		} else {
+			break
+		}
+	}
+	return res, nil
 }
 
 // Raft commands (tinykv <-> tinykv)

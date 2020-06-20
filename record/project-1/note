@@ -1,0 +1,31 @@
+column family
+https://en.wikipedia.org/wiki/Standard_column_family
+
+the values of the same key in different column families is not the same. 
+You can simply regard multiple column families as separate mini databases. 
+It’s used to support the transaction model in project4
+
+# hints
+
+1. you don’t need to consider the `kvrpcpb.Context` now, it’s used in the following projects.
+2. You should use [badger.Txn](https://godoc.org/github.com/dgraph-io/badger#Txn) to implement the `Reader` function, because the transcation handler provided by badger could provide a consistent snapshot of the keys and values.
+3. Badger doesn’t give support for column families. engine_util package (kv/util/engine_util`) simulates column families by adding a prefix to keys.  For example, a key `key` that belongs to a specific column family `cf` is stored as `${cf}_${key}`. It warps `badger` to provide operations with CFs, and also offers many useful helper functions. So you should do all read/write operations through `engine_util` provided methods. Please read `util/engine_util/doc.go` to learn more.
+4. TinyKV uses a fork of the original version of `badger` with some fix, so just use `github.com/Connor1996/badger` instead of  `github.com/dgraph-io/badger`.
+5. Don’t forget to call `Discard()` for badger.Txn and close all iterators before discarding.
+
+# TODO
+
+## implement storage kv/storage/standalone_storage/standalone_storage.go
+
+kv/server/server.go handle gRPC call (RawGet/ RawScan/ RawPut/ RawDelete)
+server.go rely on kv/storage/storage.go
+the implementation of storage is in kv/storage/standalone_storage/standalone_storage.go
+standalone_storage is a wrapper around badger DB engine kv/util/engine_util/engines.go
+
+do all read/write operations through engine_util provided methods
+
+https://github.com/dgraph-io/badger
+https://godoc.org/github.com/dgraph-io/badger#Txn
+
+#### Implement service handlers
+The final step of this project is to use the implemented storage engine to build raw key/value service handlers including RawGet/RawScan/RawPut/RawDelete. The handler is already defined for you, you only need to fill up the implementation in `kv/server/server.go`. Once done, remember to run `make project1` to pass the test suite.
