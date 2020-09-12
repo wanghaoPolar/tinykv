@@ -363,10 +363,13 @@ func testNonleadersElectionTimeoutNonconflict(t *testing.T, state StateType) {
 func TestLeaderStartReplication2AB(t *testing.T) {
 	s := NewMemoryStorage()
 	r := newTestRaft(1, []uint64{1, 2, 3}, 10, 1, s)
+	// fmt.Printf("stabled: %v\n", r.RaftLog.stabled)
 	r.becomeCandidate()
 	r.becomeLeader()
 	commitNoopEntry(r, s)
 	li := r.RaftLog.LastIndex()
+	// fmt.Printf("[test] before propose last index: %v\n", li)
+	// fmt.Printf("[test] a committed: %v, stabled: %v, entreis: %v\n", r.RaftLog.committed, r.RaftLog.stabled, r.RaftLog.entries)
 
 	ents := []*pb.Entry{{Data: []byte("some data")}}
 	r.Step(pb.Message{From: 1, To: 1, MsgType: pb.MessageType_MsgPropose, Entries: ents})
@@ -388,6 +391,7 @@ func TestLeaderStartReplication2AB(t *testing.T) {
 	if !reflect.DeepEqual(msgs, wmsgs) {
 		t.Errorf("msgs = %+v, want %+v", msgs, wmsgs)
 	}
+	// fmt.Printf("committed: %v, stabled: %v, entreis: %v\n", r.RaftLog.committed, r.RaftLog.stabled, r.RaftLog.entries)
 	if g := r.RaftLog.unstableEntries(); !reflect.DeepEqual(g, wents) {
 		t.Errorf("ents = %+v, want %+v", g, wents)
 	}
@@ -416,6 +420,7 @@ func TestLeaderCommitEntry2AB(t *testing.T) {
 	if g := r.RaftLog.committed; g != li+1 {
 		t.Errorf("committed = %d, want %d", g, li+1)
 	}
+	// fmt.Printf("raftlog: commit: %v, applied: %v, entries: %v\n", r.RaftLog.committed, r.RaftLog.applied, r.RaftLog.entries)
 	wents := []pb.Entry{{Index: li + 1, Term: 1, Data: []byte("some data")}}
 	if g := r.RaftLog.nextEnts(); !reflect.DeepEqual(g, wents) {
 		t.Errorf("nextEnts = %+v, want %+v", g, wents)
@@ -736,6 +741,8 @@ func TestLeaderSyncFollowerLog2AB(t *testing.T) {
 		followerStorage.Append(tt)
 		follower := newTestRaft(2, []uint64{1, 2, 3}, 10, 1, followerStorage)
 		follower.Term = term - 1
+		// fmt.Printf("leader entries: %v\n", lead.RaftLog.entries)
+		// fmt.Printf("folower entries: %v\n", follower.RaftLog.entries)
 		// It is necessary to have a three-node cluster.
 		// The second may have more up-to-date log than the first one, so the
 		// first node needs the vote from the third node to become the leader.
@@ -743,8 +750,10 @@ func TestLeaderSyncFollowerLog2AB(t *testing.T) {
 		n.send(pb.Message{From: 1, To: 1, MsgType: pb.MessageType_MsgHup})
 		// The election occurs in the term after the one we loaded with
 		// lead's term and commited index setted up above.
+		// Reject is false, so 1 is now leader
 		n.send(pb.Message{From: 3, To: 1, MsgType: pb.MessageType_MsgRequestVoteResponse, Term: term + 1})
 
+		// propose a noop entry
 		n.send(pb.Message{From: 1, To: 1, MsgType: pb.MessageType_MsgPropose, Entries: []*pb.Entry{{}}})
 
 		if g := diffu(ltoa(lead.RaftLog), ltoa(follower.RaftLog)); g != "" {
@@ -886,6 +895,7 @@ func (s messageSlice) Len() int           { return len(s) }
 func (s messageSlice) Less(i, j int) bool { return fmt.Sprint(s[i]) < fmt.Sprint(s[j]) }
 func (s messageSlice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
+// test that the leader has committed noop
 func commitNoopEntry(r *Raft, s *MemoryStorage) {
 	if r.State != StateLeader {
 		panic("it should only be used when it is the leader")
@@ -900,6 +910,7 @@ func commitNoopEntry(r *Raft, s *MemoryStorage) {
 	// simulate the response of MessageType_MsgAppend
 	msgs := r.readMessages()
 	for _, m := range msgs {
+		// expect a message that will send append msg to other node
 		if m.MsgType != pb.MessageType_MsgAppend || len(m.Entries) != 1 || m.Entries[0].Data != nil {
 			panic("not a message to append noop entry")
 		}

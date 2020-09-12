@@ -14,7 +14,11 @@
 
 package raft
 
-import pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
+import (
+	"math"
+
+	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
+)
 
 // RaftLog manage the log entries, its struct look like:
 //
@@ -40,6 +44,8 @@ type RaftLog struct {
 	// log entries with index <= stabled are persisted to storage.
 	// It is used to record the logs that are not persisted by storage yet.
 	// Everytime handling `Ready`, the unstabled logs will be included.
+	// see test TestFollowerAppendEntries2AB
+	// stabled is all entries that follower confirm that is same with current leader
 	stabled uint64
 
 	// all entries that have not yet compact.
@@ -71,12 +77,13 @@ func getEntriesFromStorage(storage Storage) []pb.Entry {
 // newLog returns log using the given storage. It recovers the log
 // to the state that it just commits and applies the latest snapshot.
 func newLog(storage Storage) *RaftLog {
+	entries := getEntriesFromStorage(storage)
 	raftLog := RaftLog{
-		entries:   getEntriesFromStorage(storage),
+		entries:   entries,
 		storage:   storage,
 		committed: None,
 		applied:   None,
-		stabled:   None,
+		stabled:   uint64(len(entries)),
 	}
 	return &raftLog
 }
@@ -91,29 +98,41 @@ func (l *RaftLog) maybeCompact() {
 // unstableEntries return all the unstable entries
 func (l *RaftLog) unstableEntries() []pb.Entry {
 	// Your Code Here (2A).
-	return nil
+	// stabled is 1-indexed
+	return l.entries[l.stabled:]
 }
 
 // nextEnts returns all the committed but not applied entries
 func (l *RaftLog) nextEnts() (ents []pb.Entry) {
 	// Your Code Here (2A).
-	return nil
+	return l.entries[l.applied:l.committed]
 }
 
 // LastIndex return the last index of the log entries
 func (l *RaftLog) LastIndex() uint64 {
-	return uint64(len(l.entries) - 1)
+	if len(l.entries) == 0 {
+		return 0
+	}
+	return uint64(len(l.entries))
 }
 
 func (l *RaftLog) lastEntry() *pb.Entry {
 	if len(l.entries) == 0 {
 		return nil
 	}
-	return &l.entries[l.LastIndex()]
+	return &l.entries[l.LastIndex()-1]
 }
+
+// NotFoundTerm means the log doesn't exist
+const NotFoundTerm uint64 = math.MaxUint64
 
 // Term return the term of the entry in the given index
 func (l *RaftLog) Term(i uint64) (uint64, error) {
 	// Your Code Here (2A).
-	return 0, nil
+	if i > uint64(len(l.entries)) {
+		// fmt.Printf("[Term] i = %v, l.entries.len = %v\n", i, uint64(len(l.entries)))
+		// doesn't exist
+		return NotFoundTerm, nil
+	}
+	return l.entries[i-1].Term, nil
 }
