@@ -134,5 +134,8 @@ func (l *RaftLog) Term(i uint64) (uint64, error) {
 		// doesn't exist
 		return NotFoundTerm, nil
 	}
+	if i == 0 {
+		return 0, nil
+	}
 	return l.entries[i-1].Term, nil
 }
