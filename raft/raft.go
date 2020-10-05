@@ -174,6 +174,8 @@ func newRaft(c *Config) *Raft {
 		prs[pid] = &Progress{Next: 0, Match: 0, Committed: 0}
 	}
 	hard, _, _ := c.Storage.InitialState()
+	raftLog := newLog(c.Storage)
+	raftLog.committed = hard.Commit
 	// read from storage
 	raft := Raft{
 		id:   c.ID,
@@ -187,7 +189,7 @@ func newRaft(c *Config) *Raft {
 		electionTimeout:  randomElectionTimeout(c.ElectionTick),
 		Lead:             None,
 		Vote:             hard.Vote,
-		RaftLog:          newLog(c.Storage),
+		RaftLog:          raftLog,
 		Prs:              prs,
 		votes:            make(map[uint64]bool),
 		rejects:          make(map[uint64]bool),

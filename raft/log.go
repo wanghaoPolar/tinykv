@@ -77,6 +77,7 @@ func getEntriesFromStorage(storage Storage) []pb.Entry {
 // newLog returns log using the given storage. It recovers the log
 // to the state that it just commits and applies the latest snapshot.
 func newLog(storage Storage) *RaftLog {
+	// cannot call storage.InitialState here due to TestDuelingCandidates2AB
 	entries := getEntriesFromStorage(storage)
 	raftLog := RaftLog{
 		entries:   entries,
